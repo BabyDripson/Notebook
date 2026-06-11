@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Crypt-Notebook</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen flex flex-col justify-center items-center p-4">
+
+    <div id="auth-screen" class="w-full max-w-md bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700 transition-all">
+        <h2 class="text-2xl font-bold mb-2 text-center text-indigo-400">Locked Notebook</h2>
+        <p class="text-gray-400 text-sm text-center mb-6">Enter your passcode to unlock or initialize your notebook.</p>
+        
+        <div class="space-y-4">
+            <input type="password" id="password-input" placeholder="Enter Secret Code..." 
+                   class="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg focus:outline-none focus:border-indigo-500 text-white tracking-widest text-center">
+            
+            <button onclick="unlockNotebook()" 
+                    class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 shadow-lg cursor-pointer">
+                Unlock / Open
+            </button>
+            
+            <p id="error-message" class="text-red-400 text-sm text-center hidden font-medium"></p>
+        </div>
+    </div>
+
+    <div id="notebook-screen" class="w-full max-w-4xl bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700 flex-col h-[85vh] hidden">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-indigo-400 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Unlocked Editor
+            </h2>
+            <div class="flex gap-2">
+                <button onclick="lockWithoutSaving()" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm transition font-medium cursor-pointer">
+                    Discard & Lock
+                </button>
+                <button onclick="saveAndLock()" class="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg text-sm font-semibold text-white transition shadow-md cursor-pointer">
+                    Save & Lock
+                </button>
+            </div>
+        </div>
+
+        <textarea id="notebook-textarea" placeholder="Start typing your private notes here..." 
+                  class="w-full flex-1 p-4 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 resize-none text-gray-200 font-mono leading-relaxed overflow-y-auto"></textarea>
+    </div>
+
+    <script>
+        // Core configuration
+        const STORAGE_KEY = 'secure_notebook_data';
+        const VERIFICATION_PREFIX = '_VALID_NOTEBOOK_'; // Used to verify if password decryption succeeded
+
+        let currentPassword = '';
+
+        // Elements
+        const authScreen = document.getElementById('auth-screen');
+        const notebookScreen = document.getElementById('notebook-screen');
+        const passwordInput = document.getElementById('password-input');
+        const notebookTextarea = document.getElementById('notebook-textarea');
+        const errorMessage = document.getElementById('error-message');
+
+        // Handle Enter Key on password input
+        passwordInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') unlockNotebook();
+        });
+
+        function unlockNotebook() {
+            const password = passwordInput.value;
+            if (!password) {
+                showError('Please enter a passcode.');
+                return;
+            }
+
+            const cipherText = localStorage.getItem(STORAGE_KEY);
+
+            // If no data exists yet, treat this as a brand new notebook setup
+            if (!cipherText) {
+                currentPassword = password;
+                notebookTextarea.value = '';
+                showScreen('notebook');
+                return;
+            }
+
+            try {
+                // Attempt decryption
+                const bytes = CryptoJS.AES.decrypt(cipherText, password);
+                const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+
+                // Verify if the decrypted text matches our secret prefix structure
+                if (decryptedData.startsWith(VERIFICATION_PREFIX)) {
+                    currentPassword = password;
+                    // Strip the verification prefix out before displaying text
+                    notebookTextarea.value = decryptedData.replace(VERIFICATION_PREFIX, '');
+                    showScreen('notebook');
+                    errorMessage.classList.add('hidden');
+                } else {
+                    showError('Incorrect passcode. Access Denied.');
+                }
+            } catch (e) {
+                showError('Incorrect passcode. Access Denied.');
+            }
+        }
+
+        function saveAndLock() {
+            if (!currentPassword) return;
+
+            const textToSave = VERIFICATION_PREFIX + notebookTextarea.value;
+            // Encrypt data with the passcode
+            const cipherText = CryptoJS.AES.encrypt(textToSave, currentPassword).toString();
+            
+            // Save encrypted string to localStorage
+            localStorage.setItem(STORAGE_KEY, cipherText);
+            
+            // Purge variables and lock down interface
+            currentPassword = '';
+            passwordInput.value = '';
+            notebookTextarea.value = '';
+            showScreen('auth');
+        }
+
+        function lockWithoutSaving() {
+            if(confirm("Are you sure? Unsaved changes will be lost.")) {
+                currentPassword = '';
+                passwordInput.value = '';
+                notebookTextarea.value = '';
+                showScreen('auth');
+            }
+        }
+
+        function showScreen(screen) {
+            if (screen === 'notebook') {
+                authScreen.style.display = 'none';
+                notebookScreen.style.display = 'flex';
+                notebookTextarea.focus();
+            } else {
+                authScreen.style.display = 'block';
+                notebookScreen.style.display = 'none';
+                passwordInput.focus();
+            }
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.remove('hidden');
+            passwordInput.value = '';
+        }
+    </script>
+</body>
+</html>
